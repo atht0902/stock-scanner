@@ -55,7 +55,7 @@ try:
             naver_url = f"https://finance.naver.com/item/main.naver?code={ticker}"
             st.link_button(f"🔗 {name} 상세 정보/뉴스 보기", naver_url)
 
-            # --- 차트 코드 시작 (최종 수정본) ---
+            # --- 차트 코드 시작 ---
             st.divider()
             st.write(f"📊 **{name} 최근 3개월 차트**")
             
@@ -92,8 +92,4 @@ try:
                     st.warning("해당 종목의 최근 차트 데이터가 없습니다.")
                     
             except Exception as e:
-                # 에러가 나면 화면에 표시
                 st.error(f"차트 생성 중 오류 발생: {e}")
-
-
-
