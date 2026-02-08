@@ -2,5 +2,5 @@ streamlit
 pykrx
 pandas
 plotly
-python-binance
+pycoingecko
 
