@@ -65,7 +65,7 @@ try:
                 start_dt = (base_dt - timedelta(days=90)).strftime("%Y%m%d")
                 end_dt = str(used_date)
                 
-                # 2. 차트 데이터 가져오기 (에러 방지를 위해 ticker만 사용)
+                # 2. 차트 데이터 가져오기
                 df_chart = stock.get_market_ohlcv_by_ticker(start_dt, end_dt, ticker)
                 
                 if not df_chart.empty:
@@ -89,10 +89,11 @@ try:
                     
                     st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.warning("이 종목의 차트 데이터를 불러올 수 없습니다.")
+                    st.warning("해당 종목의 최근 차트 데이터가 없습니다.")
                     
             except Exception as e:
-                st.error(f"차트 로딩 중 에러 발생: {e}")
+                # 에러가 나면 화면에 표시
+                st.error(f"차트 생성 중 오류 발생: {e}")
 
 
 
