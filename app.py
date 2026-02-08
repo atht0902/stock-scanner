@@ -11,14 +11,15 @@ st.write("시장 거래대금 상위 50위 종목 중 선별된 리스트입니�
 # 2. 날짜 설정 (데이터가 있는 가장 최근 영업일 찾기)
 @st.cache_data # 데이터를 매번 새로 받지 않고 속도를 높이기 위한 설정
 def get_stock_data():
-    target_date = datetime.now().strftime("%Y%m%d")
-    df = stock.get_market_ohlcv_by_ticker(target_date, market="ALL")
-    
-    # 주말이나 장 시작 전이라 데이터가 없으면 어제로 변경
-    if df.empty:
-        target_date = (datetime.now() - timedelta(days=1)).strftime("%Y%m%d")
+    # 오늘부터 최대 10일 전까지 거꾸로 가며 데이터가 있는 날을 찾음
+    for i in range(10):
+        target_date = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
         df = stock.get_market_ohlcv_by_ticker(target_date, market="ALL")
-    return df, target_date
+        
+        # 데이터가 존재하고, 거래대금 합계가 0보다 큰 날(실제 영업일)인지 확인
+        if not df.empty and df['거래대금'].sum() > 0:
+            return df, target_date
+    return pd.DataFrame(), "데이터 없음"
 
 try:
     df, used_date = get_stock_data()
@@ -56,4 +57,5 @@ try:
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
+
     st.write("장 시작 전이거나 공휴일일 수 있습니다. 잠시 후 다시 시도해 주세요.")
