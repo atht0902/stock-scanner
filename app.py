@@ -60,26 +60,25 @@ try:
             st.write(f"📊 **{name} 최근 3개월 차트**")
             
             try:
-                # 1. 날짜 설정 (사용한 날짜 기준 90일 전)
+                # 1. 날짜 설정
                 base_dt = datetime.strptime(str(used_date), "%Y%m%d")
                 start_dt = (base_dt - timedelta(days=90)).strftime("%Y%m%d")
                 end_dt = str(used_date)
                 
-                # 2. 데이터 가져오기 (오류 방지를 위해 ticker만 사용)
+                # 2. 차트 데이터 가져오기 (에러 방지를 위해 ticker만 사용)
                 df_chart = stock.get_market_ohlcv_by_ticker(start_dt, end_dt, ticker)
                 
                 if not df_chart.empty:
                     import plotly.graph_objects as go
                     
-                    # 3. 캔들차트 생성
                     fig = go.Figure(data=[go.Candlestick(
                         x=df_chart.index,
                         open=df_chart['시가'],
                         high=df_chart['고가'],
                         low=df_chart['저가'],
                         close=df_chart['종가'],
-                        increasing_line_color='red', # 상승 빨강
-                        decreasing_line_color='blue'  # 하락 파랑
+                        increasing_line_color='red',
+                        decreasing_line_color='blue'
                     )])
                     
                     fig.update_layout(
@@ -90,15 +89,10 @@ try:
                     
                     st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.warning("해당 기간의 차트 데이터가 없습니다.")
+                    st.warning("이 종목의 차트 데이터를 불러올 수 없습니다.")
                     
             except Exception as e:
-                st.error(f"차트 불러오기 중 오류가 발생했습니다: {e}")
-
-except Exception as e:
-    st.error(f"오류가 발생했습니다: {e}")
-
-    st.write("장 시작 전이거나 공휴일일 수 있습니다. 잠시 후 다시 시도해 주세요.")
+                st.error(f"차트 로딩 중 에러 발생: {e}")
 
 
 
