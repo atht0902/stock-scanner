@@ -61,7 +61,9 @@ try:
             
             # 차트용 데이터 가져오기 (최근 90일)
             end_date = used_date
-            start_date = (datetime.strptime(used_date, "%Y%m%d") - timedelta(days=90)).strftime("%Y%m%d")
+            #used_date가 이미 문자열이므로 더 안전한 방식으로 변경
+            base_dt = datetime.strptime(str(used_date), "%Y%m%d")
+            start_date = (base_dt - timedelta(days=90)).strftime("%Y%m%d")
             df_chart = stock.get_market_ohlcv_by_ticker(start_date, end_date, ticker)
             
             if not df_chart.empty:
@@ -93,4 +95,5 @@ except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
 
     st.write("장 시작 전이거나 공휴일일 수 있습니다. 잠시 후 다시 시도해 주세요.")
+
 
