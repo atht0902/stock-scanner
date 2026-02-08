@@ -55,45 +55,50 @@ try:
             naver_url = f"https://finance.naver.com/item/main.naver?code={ticker}"
             st.link_button(f"🔗 {name} 상세 정보/뉴스 보기", naver_url)
 
-# --- 여기부터 차트 코드 추가 ---
+            # --- 차트 코드 시작 (최종 수정본) ---
             st.divider()
             st.write(f"📊 **{name} 최근 3개월 차트**")
             
-            # 차트용 데이터 가져오기 (최근 90일)
-            end_date = used_date
-            #used_date가 이미 문자열이므로 더 안전한 방식으로 변경
-            base_dt = datetime.strptime(str(used_date), "%Y%m%d")
-            start_date = (base_dt - timedelta(days=90)).strftime("%Y%m%d")
-            df_chart = stock.get_market_ohlcv_by_ticker(start_date, end_date, ticker)
-            
-            if not df_chart.empty:
-                import plotly.graph_objects as go
+            try:
+                # 1. 날짜 설정 (사용한 날짜 기준 90일 전)
+                base_dt = datetime.strptime(str(used_date), "%Y%m%d")
+                start_dt = (base_dt - timedelta(days=90)).strftime("%Y%m%d")
+                end_dt = str(used_date)
                 
-                # 캔들차트 설정
-                fig = go.Figure(data=[go.Candlestick(
-                    x=df_chart.index,
-                    open=df_chart['시가'],
-                    high=df_chart['고가'],
-                    low=df_chart['저가'],
-                    close=df_chart['종가'],
-                    increasing_line_color= 'red', # 상승은 빨간색
-                    decreasing_line_color= 'blue' # 하락은 파란색
-                )])
+                # 2. 데이터 가져오기 (오류 방지를 위해 ticker만 사용)
+                df_chart = stock.get_market_ohlcv_by_ticker(start_dt, end_dt, ticker)
                 
-                # 차트 디자인 깔끔하게 정리
-                fig.update_layout(
-                    height=400, 
-                    margin=dict(l=10, r=10, b=10, t=10),
-                    xaxis_rangeslider_visible=False # 하단 슬라이더 제거 (깔끔하게)
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-            else:
-                st.write("차트 데이터를 불러올 수 없습니다.")
+                if not df_chart.empty:
+                    import plotly.graph_objects as go
+                    
+                    # 3. 캔들차트 생성
+                    fig = go.Figure(data=[go.Candlestick(
+                        x=df_chart.index,
+                        open=df_chart['시가'],
+                        high=df_chart['고가'],
+                        low=df_chart['저가'],
+                        close=df_chart['종가'],
+                        increasing_line_color='red', # 상승 빨강
+                        decreasing_line_color='blue'  # 하락 파랑
+                    )])
+                    
+                    fig.update_layout(
+                        height=400,
+                        margin=dict(l=10, r=10, b=10, t=10),
+                        xaxis_rangeslider_visible=False
+                    )
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.warning("해당 기간의 차트 데이터가 없습니다.")
+                    
+            except Exception as e:
+                st.error(f"차트 불러오기 중 오류가 발생했습니다: {e}")
 
 except Exception as e:
     st.error(f"오류가 발생했습니다: {e}")
 
     st.write("장 시작 전이거나 공휴일일 수 있습니다. 잠시 후 다시 시도해 주세요.")
+
 
 
