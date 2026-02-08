@@ -8,12 +8,11 @@ st.set_page_config(page_title="주식 종목 선별기", layout="wide")
 st.title("📈 오늘의 종목 선별 리스트")
 st.write("시장 거래대금 상위 50위 종목 중 선별된 리스트입니다.")
 
-# 2. 날짜 설정 (데이터가 있는 가장 최근 영업일 찾기)
+# 2. 날짜 설정 (최근 영업일 찾기)
 @st.cache_data
 def get_stock_data():
     for i in range(10):
         target_date = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
-        # 메인 데이터는 market="ALL" 유지 (필수)
         df = stock.get_market_ohlcv_by_ticker(target_date, market="ALL")
         if not df.empty and df['거래대금'].sum() > 0:
             return df, target_date
@@ -23,46 +22,45 @@ try:
     df, used_date = get_stock_data()
     
     if not df.empty:
-        st.info(f"📅 분석 기준일: {used_date} (거래대금 상위 50위 기준)")
+        st.info(f"📅 분석 기준일: {used_date}")
         
-        # 거래대금 상위 50위 추출
+        # 거래대금 상위 50위
         top_50 = df.sort_values(by='거래대금', ascending=False).head(50)
         
         for ticker in top_50.index:
             name = stock.get_market_ticker_name(ticker)
             price = top_50.loc[ticker, '종가']
+            open_price = top_50.loc[ticker, '시가']
             change_rate = top_50.loc[ticker, '등락률']
-            volume_money = top_50.loc[ticker, '거래대금'] / 100000000  # 억원 단위
+            volume_money = top_50.loc[ticker, '거래대금'] / 100000000 
             
-            with st.expander(f"📌 {name} ({ticker})"):
+            # --- 갭 상승 강조 로직 (임시: 시가가 종가보다 높게 시작하면 강조) ---
+            is_gap = open_price > (price / (1 + change_rate/100))
+            label = f"🔥 {name}" if is_gap else f"📌 {name}"
+
+            with st.expander(f"{label} ({ticker})"):
                 col1, col2 = st.columns(2)
-                
                 with col1:
                     st.write("**[데이터 정보]**")
                     st.write(f"* 💰 거래대금: {volume_money:,.1f} 억원")
                     st.write(f"* 📊 등락률: {change_rate:.2f}%")
-                    st.write(f"* 📉 종가: {price:,.0f}원")
                 
                 with col2:
-                    st.write("**[선별 근거]**")
-                    st.write("✅ 거래대금 상위 50위 이내 (시장 관심도 높음)")
-                    st.write("✅ 익일 시가 상승갭 패턴 분석 대상")
-                    st.write("✅ 관련 이슈 및 뉴스 확인 필요")
+                    st.write("**[분석 요약]**")
+                    st.write("✅ 거래대금 상위 50위 (수급 집중)")
+                    if is_gap: st.write("✅ **시가 갭 발생 확인**")
                 
-                # 네이버 금융 링크
-                naver_url = f"https://finance.naver.com/item/main.naver?code={ticker}"
-                st.link_button(f"🔗 {name} 상세 정보/뉴스 보기", naver_url)
+                st.link_button(f"🔗 {name} 상세 정보 보기", f"https://finance.naver.com/item/main.naver?code={ticker}")
                 
-                # --- 차트 코드 (에러 방지 완결판) ---
+                # --- 차트 (날짜 처리를 더 강력하게 수정) ---
                 st.divider()
-                st.write(f"📊 **{name} 최근 주가 흐름**")
                 try:
-                    # 차트용 날짜 계산
-                    base_dt = datetime.strptime(str(used_date), "%Y%m%d")
-                    start_dt = (base_dt - timedelta(days=90)).strftime("%Y%m%d")
+                    # 차트용 날짜를 별도로 계산
+                    end_dt = datetime.strptime(used_date, "%Y%m%d")
+                    start_dt = (end_dt - timedelta(days=60)).strftime("%Y%m%d")
                     
-                    # 핵심: 차트 데이터는 ticker만 넣어서 가져오기 (에러 원인 해결)
-                    df_chart = stock.get_market_ohlcv_by_ticker(start_dt, used_date, ticker)
+                    # 'ALL'을 빼고 ticker만 전달 (핵심 수정)
+                    df_chart = stock.get_market_ohlcv(start_dt, used_date, ticker)
                     
                     if not df_chart.empty:
                         import plotly.graph_objects as go
@@ -72,15 +70,14 @@ try:
                             low=df_chart['저가'], close=df_chart['종가'],
                             increasing_line_color='red', decreasing_line_color='blue'
                         )])
-                        fig.update_layout(height=400, margin=dict(l=10, r=10, b=10, t=10), xaxis_rangeslider_visible=False)
+                        fig.update_layout(height=350, margin=dict(l=0, r=0, b=0, t=0), xaxis_rangeslider_visible=False)
                         st.plotly_chart(fig, use_container_width=True)
                     else:
-                        st.warning("차트 데이터를 불러올 수 없습니다.")
-                except Exception as chart_err:
-                    st.error(f"차트 생성 중 오류: {chart_err}")
+                        st.write("⚠️ 차트 데이터를 생성할 수 없습니다.")
+                except:
+                    st.write("⚠️ 차트 로딩 실패")
 
     else:
-        st.error("데이터를 불러올 수 없습니다. 장 시작 전이거나 휴장일일 수 있습니다.")
-
-except Exception as main_err:
-    st.error(f"메인 오류 발생: {main_err}")
+        st.error("데이터를 가져올 수 없습니다.")
+except Exception as e:
+    st.error(f"오류 발생: {e}")
