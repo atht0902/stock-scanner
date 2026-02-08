@@ -13,6 +13,7 @@ st.write("시장 거래대금 상위 50위 종목 중 선별된 리스트입니�
 def get_stock_data():
     for i in range(10):
         target_date = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+        # 메인 데이터는 market="ALL" 유지 (필수)
         df = stock.get_market_ohlcv_by_ticker(target_date, market="ALL")
         if not df.empty and df['거래대금'].sum() > 0:
             return df, target_date
@@ -52,12 +53,15 @@ try:
                 naver_url = f"https://finance.naver.com/item/main.naver?code={ticker}"
                 st.link_button(f"🔗 {name} 상세 정보/뉴스 보기", naver_url)
                 
-                # --- 차트 코드 추가 ---
+                # --- 차트 코드 (에러 방지 완결판) ---
                 st.divider()
                 st.write(f"📊 **{name} 최근 주가 흐름**")
                 try:
+                    # 차트용 날짜 계산
                     base_dt = datetime.strptime(str(used_date), "%Y%m%d")
                     start_dt = (base_dt - timedelta(days=90)).strftime("%Y%m%d")
+                    
+                    # 핵심: 차트 데이터는 ticker만 넣어서 가져오기 (에러 원인 해결)
                     df_chart = stock.get_market_ohlcv_by_ticker(start_dt, used_date, ticker)
                     
                     if not df_chart.empty:
@@ -72,11 +76,11 @@ try:
                         st.plotly_chart(fig, use_container_width=True)
                     else:
                         st.warning("차트 데이터를 불러올 수 없습니다.")
-                except Exception as e:
-                    st.error(f"차트 생성 중 오류: {e}")
+                except Exception as chart_err:
+                    st.error(f"차트 생성 중 오류: {chart_err}")
 
     else:
         st.error("데이터를 불러올 수 없습니다. 장 시작 전이거나 휴장일일 수 있습니다.")
 
-except Exception as e:
-    st.error(f"오류가 발생했습니다: {e}")
+except Exception as main_err:
+    st.error(f"메인 오류 발생: {main_err}")
