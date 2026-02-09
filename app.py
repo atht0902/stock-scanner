@@ -3,59 +3,63 @@ from pykrx import stock
 import pandas as pd
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="종목 스캐너 최종", layout="wide")
-st.title("🚀 서버 지연 돌파 스캐너")
+# 1. 모바일 최적화 설정
+st.set_page_config(
+    page_title="친구들과 쓰는 퀀트툴",
+    layout="wide", # PC에서는 넓게
+    initial_sidebar_state="collapsed" # 모바일에서 메뉴 숨기기
+)
 
-@st.cache_data(ttl=300)
-def get_safe_data():
-    # 최근 10일 중 가장 가까운 영업일 데이터 찾기
+st.title("📱 퀀트 스캐너 (모바일 최적화)")
+
+# 2. 캐싱 강화 (TTL을 늘리고 데이터 보존)
+@st.cache_data(ttl=3600, show_spinner=False) # 1시간 동안 캐시 유지
+def get_robust_data():
+    # 최근 10일 중 가장 데이터가 잘 나오는 날 찾기
     for i in range(10):
         dt = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
         try:
             df = stock.get_market_ohlcv_by_ticker(dt, market="ALL")
             if df is not None and not df.empty and df['거래대금'].sum() > 0:
-                return dt, df
+                # 수급 데이터도 한꺼번에 캐싱
+                df_inv = stock.get_market_net_purchases_of_equities_by_ticker(dt, dt, "ALL")
+                return dt, df, df_inv
         except:
             continue
-    return None, None
+    return None, None, None
 
-# 튜플 언패킹 에러 방지 (가장 중요!)
-data_res = get_safe_data()
+with st.spinner('최신 데이터를 동기화 중입니다...'):
+    target_dt, df_ohlcv, df_inv = get_robust_data()
 
-if data_res and data_res[0] is not None:
-    final_dt, market_df = data_res
-    st.success(f"✅ {final_dt} 데이터 연결 성공!")
-
-    # 상위 30개 추출
-    top_30 = market_df.sort_values(by='거래대금', ascending=False).head(30).copy()
+if df_ohlcv is not None:
+    st.success(f"✅ {target_dt} 데이터 로드 완료")
     
-    # 수급 데이터 시도
-    try:
-        df_inv = stock.get_market_net_purchases_of_equities_by_ticker(final_dt, final_dt, "ALL")
-    except:
-        df_inv = pd.DataFrame()
-
-    display_data = []
-    for ticker in top_30.index:
+    # 데이터 가공 (거래대금 상위 20개만 - 모바일 가독성 위해 줄임)
+    top_df = df_ohlcv.sort_values(by='거래대금', ascending=False).head(20).copy()
+    
+    # 3. 모바일용 레이아웃 (컬럼 분할)
+    # 모바일에서는 컬럼이 자동으로 아래로 쌓입니다.
+    for ticker in top_df.index:
         name = stock.get_market_ticker_name(ticker)
-        row = top_30.loc[ticker]
-        link = f'<a href="https://finance.naver.com/item/main.naver?code={ticker}" target="_blank" style="text-decoration:none; color:#007bff; font-weight:bold;">{name}</a>'
+        row = top_df.loc[ticker]
         
-        foreign = 0
-        if not df_inv.empty and ticker in df_inv.index:
-            foreign = df_inv.loc[ticker, '외국인'] / 100000000
+        # 수급 계산
+        f_buy = 0
+        if df_inv is not None and ticker in df_inv.index:
+            f_buy = df_inv.loc[ticker, '외국인'] / 100000000
 
-        display_data.append({
-            "종목명(차트)": link,
-            "현재가": f"{int(row['종가']):,}",
-            "등락률": f"{row['등락률']:.2f}%",
-            "거래대금(억)": int(row['거래대금']/100000000),
-            "외인수급(억)": round(float(foreign), 1)
-        })
-
-    st.write("### 🔥 거래 상위 종목 리스트")
-    st.write(pd.DataFrame(display_data).to_html(escape=False, index=False), unsafe_allow_html=True)
+        # 모바일 최적화 카드형 UI
+        with st.expander(f"📍 {name} ({row['등락률']:.2f}%)"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("현재가", f"{int(row['종가']):,}원")
+                st.metric("외인수급", f"{f_buy:.1;1}억")
+            with col2:
+                st.metric("거래대금", f"{int(row['거래대금']/100000000)}억")
+                # 차트 버튼 (새 창 열기)
+                chart_url = f"https://finance.naver.com/item/main.naver?code={ticker}"
+                st.link_button("📊 네이버 차트", chart_url, use_container_width=True)
 
 else:
-    st.error("❗ 거래소 서버가 응답하지 않습니다.")
-    st.info("현재 밤 시간대 서버 점검 중일 수 있습니다. 10분 뒤에 다시 시도하거나 내일 아침에 확인해 주세요!")
+    st.error("❗ 현재 서버 점검 중입니다.")
+    st.info("오늘 낮에 가져온 데이터가 있는지 확인 중...")
