@@ -12,7 +12,6 @@ st.markdown("""
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
     .stApp { background-color: #0A0C10; font-family: 'Pretendard', sans-serif; }
     
-    /* 제목 및 서브타이틀 */
     .main-title {
         font-size: clamp(1.3rem, 7vw, 2.5rem);
         background: linear-gradient(to right, #FFD700, #FDB931);
@@ -29,8 +28,6 @@ st.markdown("""
         margin-bottom: 25px;
         font-weight: 400;
     }
-
-    /* 유산 스캐너 정비 중 박스 (사용자 요청 복구) */
     .maintenance-box {
         background-color: #161B22;
         padding: 35px 20px;
@@ -38,21 +35,17 @@ st.markdown("""
         border: 1px solid #FDB931;
         text-align: center;
         margin-top: 10px;
-        box-shadow: 0px 4px 15px rgba(253, 185, 49, 0.1);
     }
-
-    /* 필터 및 카드 스타일 */
     .stSelectbox label { color: #FFD700 !important; font-weight: bold; }
     .streamlit-expanderHeader {
         background-color: #161B22 !important;
         border-radius: 12px !important;
         border: 1px solid #30363D !important;
     }
-    [data-testid="stMetricValue"] { color: #FFD700 !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# 제목부 출력
+# 제목 및 철학 문구 출력 (복구 완료)
 st.markdown('<div class="main-title">🏛️ 홍익 미래 유산 검색기</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-title">널리 주식 투자자를 이롭게 하는 미래 자산 발굴 시스템</div>', unsafe_allow_html=True)
 
@@ -63,22 +56,57 @@ with col_f1:
 with col_f2:
     status_filter = st.selectbox("📈 등락 필터", ["전체 보기", "상승 종목만", "급등주 (5%↑)"])
 
-# 3. 데이터 엔진
+# 3. 데이터 엔진 (네이버 금융 기반)
 @st.cache_data(ttl=3600)
 def get_integrated_data(filter_type):
     try:
         header = {'User-Agent': 'Mozilla/5.0'}
-        # 우량주 선택 시 시총 페이지, 아니면 거래량 순위 페이지
         url = "https://finance.naver.com/sise/sise_market_sum.naver?sosok=0" if "우량주" in filter_type else "https://finance.naver.com/sise/sise_quant.naver?sosok=0"
         res = requests.get(url, headers=header)
-        df_list = pd.read_html(res.text, encoding='cp949')
-        # 데이터가 있는 테이블 선택 (네이버 금융 구조 대응)
-        df = df_list[1] if len(df_list) > 1 else df_list[0]
-        return df.dropna(subset=['종목명']).head(30)
+        df = pd.read_html(res.text, encoding='cp949')[1].dropna(subset=['종목명'])
+        return df.head(30)
     except:
         return None
 
 data = get_integrated_data(category)
 
 # 4. 화면 렌더링
-if data is not None and not data.empty and '
+if data is not None and not data.empty:
+    # 데이터 전처리
+    data['현재가_num'] = pd.to_numeric(data['현재가'], errors='coerce')
+    data['등락률_num'] = data['등락률'].astype(str).str.replace('%','').replace('+','').str.strip().apply(pd.to_numeric, errors='coerce')
+    
+    # 등락 필터링
+    if status_filter == "급등주 (5%↑)":
+        data = data[data['등락률_num'] >= 5.0]
+    elif status_filter == "상승 종목만":
+        data = data[data['등락률_num'] > 0]
+
+    if not data.empty:
+        cols = st.columns(2)
+        for i, (_, row) in enumerate(data.head(12).iterrows()):
+            with cols[i % 2]:
+                is_hot = row['등락률_num'] >= 10.0
+                icon = "🔥" if is_hot else ("👑" if "우량주" in category else "💎")
+                with st.expander(f"{icon} {row['종목명']} ({row['등락률']})"):
+                    st.metric("현재가", f"{int(row['현재가_num']):,}원")
+                    b1, b2 = st.columns(2)
+                    search_url = f"https://finance.naver.com/search/search.naver?query={row['종목명']}"
+                    b1.link_button("📊 분석", search_url, use_container_width=True)
+                    b2.link_button("🔗 공유", f"https://social-plugins.line.me/lineit/share?url={search_url}", use_container_width=True)
+    else:
+        st.info("조건에 맞는 유산이 없습니다.")
+else:
+    # ✨ 정비 중 카드 복구 완료
+    st.markdown("""
+        <div class="maintenance-box">
+            <h2 style='color: #FDB931; margin: 0; font-size: 24px;'>⌛ 유산 스캐너 정비 중</h2>
+            <p style='color: #808495; margin-top: 15px; font-size: 15px; line-height: 1.6;'>
+                내일 아침 9시, 장이 열리면 실시간 데이터가 표시됩니다.<br>
+                지금은 미래 유산을 정산하고 스캔을 준비하는 시간입니다.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+st.divider()
+st.caption("Produced by Hong-Ik Heritage Finder • Premium Free Edition")
