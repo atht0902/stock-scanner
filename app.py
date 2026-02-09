@@ -9,6 +9,7 @@ st.title("🚀 퀀트 분석 & 차트 바로가기")
 @st.cache_data(ttl=600)
 def get_final_data_with_link():
     found_dates = []
+    # 최근 40일 스캔하여 영업일 4일치 확보
     for i in range(40):
         target_dt = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
         try:
@@ -38,12 +39,12 @@ if data_bundle and len(data_bundle) >= 3:
                 t_ohlcv = curr['ohlcv'].loc[ticker]
                 p_ohlcv = prev['ohlcv'].loc[ticker]
                 
-                # --- 필터 최저 수준으로 완화 (종목 무조건 보기) ---
+                # --- [필터 대폭 완화] 종목이 안 나올 수가 없게 조정 ---
                 t_money = t_ohlcv['거래대금'] / 100000000
-                if t_money < 10: continue # 10억 이상이면 다 나옴
+                if t_money < 5: continue # 5억 이상이면 다 나옴 (기존 300억)
                 
                 if mode in ["prediction", "backtest"]:
-                    # 거래량 증가 + 고가 대비 15% 이내 마감
+                    # 거래량이 조금이라도 늘고, 종가가 고가 대비 15% 이내면 통과
                     if not (t_ohlcv['거래량'] > p_ohlcv['거래량'] * 1.0 and t_ohlcv['종가'] > t_ohlcv['고가'] * 0.85):
                         continue
 
@@ -54,11 +55,10 @@ if data_bundle and len(data_bundle) >= 3:
                 
                 # --- 네이버 증권 차트 링크 생성 ---
                 chart_url = f"https://finance.naver.com/item/main.naver?code={ticker}"
-                # 마크다운 형식으로 링크 생성
-                name_link = f"[{name}]({chart_url})"
+                name_link = f'<a href="{chart_url}" target="_blank">{name}</a>'
 
                 res = {
-                    '종목명(차트링크)': name_link,
+                    '종목명(클릭시차트)': name_link,
                     'PER': round(float(per), 1),
                     'PBR': round(float(pbr), 2),
                     '외인(억)': round(float(curr['investor'].loc[ticker, '외국인']/100000000), 1) if ticker in curr['investor'].index else 0,
@@ -78,21 +78,21 @@ if data_bundle and len(data_bundle) >= 3:
             except: continue
         return pd.DataFrame(results)
 
-    # 출력
-    with st.expander("📊 과거 종목 수익 확인 (클릭 시 차트 이동)"):
+    # 1. 백테스트 섹션
+    with st.expander("📊 과거 종목 수익 확인 (종목명 클릭 시 차트 이동)"):
         bt_df = analyze_with_chart(1, 2, mode="backtest")
         if not bt_df.empty:
-            st.write("종목명을 누르면 네이버 증권으로 이동합니다.")
-            st.write(bt_df.to_markdown(index=False), unsafe_allow_html=True)
+            st.write(bt_df.to_html(escape=False, index=False), unsafe_allow_html=True)
+        else: st.info("과거 조건에 맞는 종목이 없습니다.")
 
+    # 2. 내일 예측 섹션
     st.subheader("🔮 내일 갭상승 후보 & 가치 지표")
     pred_df = analyze_with_chart(0, 1, mode="prediction")
     if not pred_df.empty:
-        st.write("종목명을 누르면 네이버 증권으로 이동합니다.")
-        # 데이터프레임을 마크다운으로 렌더링하여 링크가 작동하게 함
-        st.write(pred_df.to_markdown(index=False), unsafe_allow_html=True)
+        # 가독성을 위해 HTML 테이블로 렌더링 (링크 활성화)
+        st.write(pred_df.to_html(escape=False, index=False), unsafe_allow_html=True)
     else:
-        st.warning("조건에 맞는 종목이 없습니다. 잠시 후 새로고침 해주세요.")
+        st.warning("현재 시장에 필터를 통과한 종목이 없습니다. 잠시 후 새로고침 해주세요.")
 
 else:
-    st.error("데이터 로드 중입니다.")
+    st.error("데이터 로드 중... 우측 상단 메뉴에서 [Clear cache]를 눌러주세요.")
