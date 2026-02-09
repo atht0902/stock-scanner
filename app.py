@@ -48,10 +48,10 @@ if data_bundle and len(data_bundle) >= 3:
                 
                 # [1] 기본 필터: 거래대금 300억 이상 & 거래량 폭증 & 고가 마감
                 t_money = t_data['거래대금'] / 100000000
-                if t_money < 300: continue
+                if t_money < 100: continue
                 
                 if mode in ["prediction", "backtest"]:
-                    if not (t_data['거래량'] > p_data['거래량'] * 1.5 and t_data['종가'] > t_data['고가'] * 0.97):
+                    if not (t_data['거래량'] > p_data['거래량'] * 1.2 and t_data['종가'] > t_data['고가'] * 0.97):
                         continue
 
                 # [2] 저평가 지표 (안전하게 가져오기)
@@ -107,3 +107,4 @@ if data_bundle and len(data_bundle) >= 3:
 
 else:
     st.error("데이터 로딩 실패. 우측 상단 메뉴에서 [Clear cache]를 눌러주세요.")
+
