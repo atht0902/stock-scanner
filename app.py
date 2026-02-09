@@ -19,8 +19,6 @@ def get_prediction_data_ultimate():
             # 거래대금이 있고 데이터가 비어있지 않은 '진짜 영업일'만 수집
             if not df.empty and df['거래대금'].sum() > 0:
                 dates.append((target_date, df))
-                # 리스트에 날짜가 추가될 때마다 로그 출력 (디버깅용)
-                print(f"찾은 영업일: {target_date}")
         except:
             continue
         
@@ -44,6 +42,7 @@ if data_bundle and len(data_bundle) >= 3:
     # --- 섹션 1: 과거 복기 (비교일과 그 전날 데이터 사용) ---
     with st.expander("📝 과거 갭 상승 종목 복기 (패턴 분석)"):
         success_cases = []
+        # 기준일(비교 대상의 전날) 데이터가 있는지 확인
         top_prev = prev_info[1].sort_values(by='거래대금', ascending=False).head(50)
         for ticker in top_prev.index:
             if ticker in pprev_info[1].index:
