@@ -3,79 +3,70 @@ from pykrx import stock
 import pandas as pd
 from datetime import datetime, timedelta
 
-st.set_page_config(page_title="주식 무조건 검출기", layout="wide")
-st.title("🔍 초저인망 종목 스캐너 (차트 연결)")
+st.set_page_config(page_title="최속 종목 스캐너", layout="wide")
+st.title("🔍 실시간 거래 상위 50 스캐너")
 
-@st.cache_data(ttl=600)
-def get_raw_data():
-    found_dates = []
-    for i in range(40):
-        target_dt = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
+@st.cache_data(ttl=300) # 캐시를 5분으로 단축
+def get_slim_data():
+    # 가장 최근 영업일 딱 하루치만 집중 공략
+    target_dt = datetime.now().strftime("%Y%m%d")
+    for i in range(10): # 최근 10일 중 가장 가까운 평일 찾기
+        dt = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
         try:
-            df_ohlcv = stock.get_market_ohlcv_by_ticker(target_dt, market="ALL")
-            if df_ohlcv is not None and not df_ohlcv.empty and df_ohlcv['거래대금'].sum() > 0:
-                # 데이터가 없어도 에러 안 나게 빈 데이터프레임 처리
-                try: df_inv = stock.get_market_net_purchases_of_equities_by_ticker(target_dt, target_dt, "ALL")
-                except: df_inv = pd.DataFrame()
-                try: df_fund = stock.get_market_fundamental_by_ticker(target_dt, market="ALL")
-                except: df_fund = pd.DataFrame()
-                
-                found_dates.append({'date': target_dt, 'ohlcv': df_ohlcv, 'investor': df_inv, 'fund': df_fund})
+            df = stock.get_market_ohlcv_by_ticker(dt, market="ALL")
+            if not df.empty and df['거래대금'].sum() > 0:
+                # 성공하면 기본 정보와 함께 반환
+                return dt, df
         except: continue
-        if len(found_dates) == 4: break
-    return found_dates
+    return None, None
 
-with st.spinner('시장의 모든 물고기를 긁어모으는 중...'):
-    data_bundle = get_raw_data()
+dt, df_ohlcv = get_slim_data()
 
-if data_bundle and len(data_bundle) >= 2:
-    st.info(f"📅 분석 기준일: {data_bundle[0]['date']}")
+if df_ohlcv is not None:
+    st.success(f"📅 데이터 확인 완료: {dt}")
+    
+    # 1. 거래대금 상위 50개 선정
+    top_50 = df_ohlcv.sort_values(by='거래대금', ascending=False).head(50).copy()
+    
+    # 2. 부가 데이터 (수급/펀더멘털) 한 번에 가져오기 (루프 방지)
+    try:
+        df_fund = stock.get_market_fundamental_by_ticker(dt, market="ALL")
+        df_inv = stock.get_market_net_purchases_of_equities_by_ticker(dt, dt, "ALL")
+    except:
+        df_fund = pd.DataFrame()
+        df_inv = pd.DataFrame()
 
-    def scan_all(target_idx, compare_idx):
-        curr = data_bundle[target_idx]
-        prev = data_bundle[compare_idx]
-        results = []
+    results = []
+    for ticker in top_50.index:
+        name = stock.get_market_ticker_name(ticker)
+        ohlcv = top_50.loc[ticker]
+        
+        # 링크 생성
+        chart_url = f"https://finance.naver.com/item/main.naver?code={ticker}"
+        name_link = f'<a href="{chart_url}" target="_blank" style="text-decoration:none; color:#007bff; font-weight:bold;">{name}</a>'
+        
+        # 데이터 매칭 (없으면 0)
+        per = df_fund.loc[ticker, 'PER'] if ticker in df_fund.index else 0
+        pbr = df_fund.loc[ticker, 'PBR'] if ticker in df_fund.index else 0
+        f_buy = df_inv.loc[ticker, '외국인'] / 100000000 if ticker in df_inv.index else 0
+        i_buy = df_inv.loc[ticker, '기관'] / 100000000 if ticker in df_inv.index else 0
 
-        # 상위 거래대금 100개만 먼저 뽑아서 시도 (속도 향상 및 확실한 검출)
-        top_tickers = curr['ohlcv'].sort_values(by='거래대금', ascending=False).head(100).index
+        results.append({
+            "종목명(차트링크)": name_link,
+            "현재가": f"{ohlcv['종가']:,.0f}",
+            "등락률": f"{ohlcv['등락률']:.2f}%",
+            "거래대금(억)": int(ohlcv['거래대금']/100000000),
+            "외인(억)": round(f_buy, 1),
+            "기관(억)": round(i_buy, 1),
+            "PER": round(per, 1),
+            "PBR": round(pbr, 2)
+        })
 
-        for ticker in top_tickers:
-            try:
-                t_ohlcv = curr['ohlcv'].loc[ticker]
-                p_ohlcv = prev['ohlcv'].loc[ticker] if ticker in prev['ohlcv'].index else t_ohlcv
-                
-                # --- 초저인망 필터 (이건 안 걸릴 수가 없음) ---
-                t_money = t_ohlcv['거래대금'] / 100000000
-                if t_money < 1: continue # 거래대금 1억 이상이면 무조건 통과
-
-                # 수급 및 가치지표 안전하게 가져오기 (없으면 0)
-                per = curr['fund'].loc[ticker, 'PER'] if ticker in curr['fund'].index else 0
-                pbr = curr['fund'].loc[ticker, 'PBR'] if ticker in curr['fund'].index else 0
-                f_buy = curr['investor'].loc[ticker, '외국인'] / 100000000 if ticker in curr['investor'].index else 0
-                i_buy = curr['investor'].loc[ticker, '기관'] / 100000000 if ticker in curr['investor'].index else 0
-
-                name = stock.get_market_ticker_name(ticker)
-                chart_url = f"https://finance.naver.com/item/main.naver?code={ticker}"
-                
-                results.append({
-                    '종목명': f'<a href="{chart_url}" target="_blank">{name}</a>',
-                    '등락률': f"{t_ohlcv['등락률']:.1f}%",
-                    '거래대금(억)': int(t_money),
-                    '외인(억)': round(float(f_buy), 1),
-                    '기관(억)': round(float(i_buy), 1),
-                    'PER': round(float(per), 1),
-                    'PBR': round(float(pbr), 2)
-                })
-            except: continue
-        return pd.DataFrame(results)
-
-    # 결과 출력
-    st.subheader("🔥 현재 시장 거래대금 상위 종목 (차트 링크)")
-    df_final = scan_all(0, 1)
-    if not df_final.empty:
-        st.write(df_final.to_html(escape=False, index=False), unsafe_allow_html=True)
-    else:
-        st.warning("거래소 데이터 응답이 없습니다. 잠시 후 [Clear Cache]를 눌러주세요.")
+    # 테이블 출력
+    st.write("### 🔥 오늘 거래대금 TOP 50")
+    st.write("종목명을 클릭하면 네이버 증권 차트로 연결됩니다.")
+    final_df = pd.DataFrame(results)
+    st.write(final_df.to_html(escape=False, index=False), unsafe_allow_html=True)
 
 else:
-    st.error("데이터 로드 실패")
+    st.error("데이터 서버 응답이 지연되고 있습니다. 잠시 후 다시 새로고침 해주세요.")
