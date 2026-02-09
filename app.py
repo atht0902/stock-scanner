@@ -4,70 +4,79 @@ from pykrx import stock
 from datetime import datetime, timedelta
 import requests
 
-# 1. 페이지 기본 설정 (모바일 대응)
-st.set_page_config(page_title="퀀트 하이브리드", layout="wide")
-st.title("🚀 밤에도 쌩쌩한 하이브리드 스캐너")
+# 1. 테마 및 배경색 설정 (CSS 주입)
+st.set_page_config(page_title="QUANT X", layout="wide")
 
-# 2. 철벽 캐싱 함수 (데이터를 메모리에 1시간 보관)
+st.markdown("""
+    <style>
+    /* 메인 배경색 */
+    .stApp {
+        background-color: #0E1117;
+    }
+    /* 제목 스타일링 */
+    h1 {
+        color: #FFD700; /* 골드 포인트 */
+        font-family: 'Pretendard', sans-serif;
+        font-weight: 800;
+        text-align: center;
+        padding-bottom: 20px;
+    }
+    /* 카드형 스타일 (Expander 고치기) */
+    .streamlit-expanderHeader {
+        background-color: #1A1C24 !important;
+        border-radius: 10px !important;
+        border: 1px solid #30333D !important;
+        color: white !important;
+    }
+    /* 메트릭 박스 글자색 */
+    [data-testid="stMetricValue"] {
+        color: #00FFA3 !important; /* 민트색 포인트 */
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("🚀 QUANT X : VIP DASHBOARD")
+
+# 2. 데이터 엔진 (네이버 하이브리드)
 @st.cache_data(ttl=3600)
-def get_naver_backup():
+def get_dashboard_data():
     try:
-        # 네이버 금융 '거래상위' (코스피)
-        url = "https://finance.naver.com/sise/sise_quant.naver?sosok=0"
-        # 헤더를 추가하여 차단 방지
+        # 네이버 실시간 거래상위 데이터 긁기
+        url = "https://finance.naver.com/sise/sise_quant.naver?sosok=1" # 코스닥 중심
         header = {'User-Agent': 'Mozilla/5.0'}
         res = requests.get(url, headers=header)
         df_list = pd.read_html(res.text, encoding='cp949')
-        df = df_list[1].dropna().head(15) # 상위 15개만 가볍게
+        df = df_list[1].dropna().head(12)
         return df[['종목명', '현재가', '등락률', '거래량']]
     except:
         return None
 
-@st.cache_data(ttl=3600)
-def get_krx_main():
-    # 최근 영업일 찾기 로직
-    for i in range(5):
-        dt = (datetime.now() - timedelta(days=i)).strftime("%Y%m%d")
-        try:
-            df = stock.get_market_ohlcv_by_ticker(dt, market="ALL")
-            if df is not None and not df.empty:
-                return dt, df.sort_values(by='거래대금', ascending=False).head(15)
-        except: continue
-    return None, None
+# 데이터 로드
+with st.spinner('차트를 동기화 중입니다...'):
+    data = get_dashboard_data()
 
-# --- 메인 실행부 ---
-with st.spinner('안전한 통로로 데이터를 불러오는 중...'):
-    # 메인(KRX) 시도
-    dt, krx_df = get_krx_main()
-    # 보조(Naver) 로드 (미리 캐싱)
-    naver_df = get_naver_backup()
-
-# 3. 화면 렌더링 (모바일 반응형)
-if krx_df is not None:
-    st.success(f"✅ 거래소 공식 모드 가동 ({dt})")
-    source_df = krx_df
+# 3. 레이아웃 배치
+if data is not None:
+    st.markdown("<p style='text-align:center; color:#808495;'>실시간 거래 데이터 분석 완료</p>", unsafe_allow_html=True)
     
-    for ticker in source_df.index:
-        name = stock.get_market_ticker_name(ticker)
-        row = source_df.loc[ticker]
-        
-        # 모바일 카드형 레이아웃
-        with st.expander(f"📍 {name} ({row['등락률']:.2f}%)"):
-            c1, c2 = st.columns(2)
-            c1.metric("현재가", f"{int(row['종가']):,}원")
-            c2.metric("거래대금", f"{int(row['거래대금']/100000000)}억")
-            st.link_button("📊 네이버 차트", f"https://finance.naver.com/item/main.naver?code={ticker}", use_container_width=True)
-
-elif naver_df is not None:
-    st.warning("⚠️ 거래소 서버 점검 중! 네이버 모드로 전환되었습니다.")
+    # 2열로 배치하여 모바일과 PC 모두 대응
+    cols = st.columns(2)
     
-    for _, row in naver_df.iterrows():
-        with st.expander(f"🔥 {row['종목명']} ({row['등락률']})"):
-            c1, c2 = st.columns(2)
-            c1.metric("현재가", f"{row['현재가']:,}원")
-            c2.write(f"거래량: {row['거래량']:,}주")
-            # 종목코드가 없으므로 '검색' 페이지로 연결
-            st.link_button("🔍 종목 상세/차트", f"https://finance.naver.com/search/search.naver?query={row['종목명']}", use_container_width=True)
-
+    for i, (index, row) in enumerate(data.iterrows()):
+        # 왼쪽 오른쪽 번갈아가며 배치
+        with cols[i % 2]:
+            # 카드 디자인
+            with st.expander(f"💎 {row['종목명']} ({row['등락률']})"):
+                m1, m2 = st.columns(2)
+                m1.metric("현재가", f"{row['현재가']:,}원")
+                m2.metric("거래량", f"{row['거래량']:,}")
+                
+                # 버튼 스타일링
+                search_url = f"https://finance.naver.com/search/search.naver?query={row['종목명']}"
+                st.link_button("📊 상세 차트 분석", search_url, use_container_width=True)
+                
+    st.divider()
+    st.caption("Produced by Gemini-X • Data provided by Naver Finance")
 else:
-    st.error("❗ 모든 서버가 잠시 휴식 중입니다. 5분 뒤 다시 시도해주세요!")
+    st.error("서버 점검 중입니다. 내일 아침 다시 만나요!")
+
