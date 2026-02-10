@@ -132,7 +132,7 @@ SECTOR_MAP = {
     "095340.KQ": ("ISC", "반도체"),
     "039030.KQ": ("이오테크닉스", "반도체"),
     "140860.KQ": ("파크시스템스", "반도체"),
-    # 2차전지/에너지
+    # 2차전지
     "373220.KS": ("LG에너지솔루션", "2차전지"),
     "051910.KS": ("LG화학", "2차전지"),
     "006400.KS": ("삼성SDI", "2차전지"),
@@ -149,7 +149,7 @@ SECTOR_MAP = {
     "004020.KS": ("현대제철", "자동차"),
     "161390.KS": ("한국타이어앤테크놀로지", "자동차"),
     "329180.KS": ("현대오토에버", "자동차"),
-    # 바이오/제약
+    # 바이오
     "207940.KS": ("삼성바이오로직스", "바이오"),
     "068270.KS": ("셀트리온", "바이오"),
     "000100.KS": ("유한양행", "바이오"),
@@ -245,8 +245,6 @@ with col2:
 def run_analysis():
     tickers = list(SECTOR_MAP.keys())
     all_results = []
-
-    # 섹터별 등락률 집계용
     sector_changes = {}
 
     batch_size = 50
@@ -276,37 +274,29 @@ def run_analysis():
                     close = df["Close"].values
                     volume = df["Volume"].values
                     opens = df["Open"].values
-                    highs = df["High"].values
-                    lows = df["Low"].values
 
                     latest_close = close[-1]
                     latest_volume = volume[-1]
 
-                    # 전일 대비 등락률
                     if len(close) >= 2 and close[-2] > 0:
                         change_pct = ((close[-1] - close[-2]) / close[-2]) * 100
                     else:
                         change_pct = 0.0
 
-                    # ── 시그널 1: 거래량 급증 비율 (20일 평균 대비) ──
+                    # 시그널 1: 거래량 급증 (20일 평균 대비)
                     vol_score = 0
                     vol_ratio = 0.0
                     if len(volume) >= 21:
                         avg_vol_20 = np.mean(volume[-21:-1])
                         if avg_vol_20 > 0:
                             vol_ratio = latest_volume / avg_vol_20
-                            if vol_ratio >= 5.0:
-                                vol_score = 30
-                            elif vol_ratio >= 3.0:
-                                vol_score = 25
-                            elif vol_ratio >= 2.0:
-                                vol_score = 20
-                            elif vol_ratio >= 1.5:
-                                vol_score = 15
-                            elif vol_ratio >= 1.2:
-                                vol_score = 10
+                            if vol_ratio >= 5.0: vol_score = 30
+                            elif vol_ratio >= 3.0: vol_score = 25
+                            elif vol_ratio >= 2.0: vol_score = 20
+                            elif vol_ratio >= 1.5: vol_score = 15
+                            elif vol_ratio >= 1.2: vol_score = 10
 
-                    # ── 시그널 2: 연속 N일 거래량 증가 ──
+                    # 시그널 2: 연속 N일 거래량 증가
                     consec_score = 0
                     consec_days = 0
                     for j in range(len(volume) - 1, 0, -1):
@@ -314,16 +304,12 @@ def run_analysis():
                             consec_days += 1
                         else:
                             break
-                    if consec_days >= 5:
-                        consec_score = 20
-                    elif consec_days >= 4:
-                        consec_score = 16
-                    elif consec_days >= 3:
-                        consec_score = 12
-                    elif consec_days >= 2:
-                        consec_score = 8
+                    if consec_days >= 5: consec_score = 20
+                    elif consec_days >= 4: consec_score = 16
+                    elif consec_days >= 3: consec_score = 12
+                    elif consec_days >= 2: consec_score = 8
 
-                    # ── 시그널 3: 눌림목 후 반등 (MA20 근접 + 양봉) ──
+                    # 시그널 3: 눌림목 후 반등
                     bounce_score = 0
                     ma_distance = 0.0
                     if len(close) >= 20:
@@ -332,24 +318,17 @@ def run_analysis():
                             ma_distance = ((latest_close - ma20) / ma20) * 100
                             is_bullish = close[-1] > opens[-1]
                             is_near_ma = -3.0 <= ma_distance <= 5.0
-                            prev_was_down = False
-                            if len(close) >= 5:
-                                prev_was_down = close[-3] > close[-2]  # 직전 하락
-
+                            prev_was_down = len(close) >= 5 and close[-3] > close[-2]
                             if is_near_ma and is_bullish:
-                                bounce_score = 20
-                                if prev_was_down:
-                                    bounce_score = 30  # 눌림 후 반등 보너스
+                                bounce_score = 30 if prev_was_down else 20
                             elif is_near_ma:
                                 bounce_score = 10
 
-                    # 섹터 등락률 집계
                     if sector not in sector_changes:
                         sector_changes[sector] = []
                     sector_changes[sector].append(change_pct)
 
                     all_results.append({
-                        "ticker": ticker,
                         "종목명": name,
                         "섹터": sector,
                         "현재가": int(latest_close),
@@ -372,29 +351,19 @@ def run_analysis():
 
     result_df = pd.DataFrame(all_results)
 
-    # ── 시그널 4: 섹터 동반 상승 ──
+    # 시그널 4: 섹터 동반 상승
     sector_scores = {}
     for sector, changes in sector_changes.items():
-        up_count = sum(1 for c in changes if c > 0)
-        total = len(changes)
-        up_ratio = up_count / total if total > 0 else 0
-        if up_ratio >= 0.8:
-            sector_scores[sector] = 20
-        elif up_ratio >= 0.6:
-            sector_scores[sector] = 15
-        elif up_ratio >= 0.4:
-            sector_scores[sector] = 10
-        else:
-            sector_scores[sector] = 0
+        up_ratio = sum(1 for c in changes if c > 0) / len(changes) if changes else 0
+        if up_ratio >= 0.8: sector_scores[sector] = 20
+        elif up_ratio >= 0.6: sector_scores[sector] = 15
+        elif up_ratio >= 0.4: sector_scores[sector] = 10
+        else: sector_scores[sector] = 0
 
     result_df["sector_score"] = result_df["섹터"].map(sector_scores).fillna(0).astype(int)
-
-    # ── 종합 점수 (100점 만점) ──
     result_df["종합점수"] = (
-        result_df["vol_score"]
-        + result_df["consec_score"]
-        + result_df["bounce_score"]
-        + result_df["sector_score"]
+        result_df["vol_score"] + result_df["consec_score"]
+        + result_df["bounce_score"] + result_df["sector_score"]
     )
 
     return result_df
@@ -424,7 +393,6 @@ try:
         elif min_score == "70점 이상":
             result_df = result_df[result_df["종합점수"] >= 70]
 
-        # 점수 순 정렬
         result_df = result_df.sort_values("종합점수", ascending=False).head(20)
 
         status_placeholder.empty()
@@ -456,7 +424,6 @@ try:
                 card_class = "score-low"
                 grade = "💤"
 
-            # 활성화된 시그널 태그
             tags = ""
             if row["vol_score"] > 0:
                 tags += f'<span class="signal-tag tag-vol">📊 x{row["거래량비율"]}</span>'
@@ -482,7 +449,6 @@ try:
             </div>
             """, unsafe_allow_html=True)
 
-        # 면책 문구
         st.markdown("""
         <div class="disclaimer">
             ⚠️ 본 정보는 투자 권유가 아닌 참고용 데이터입니다.<br>
@@ -493,7 +459,6 @@ try:
 except Exception as e:
     status_placeholder.error(f"⚠️ 엔진 오류: {e}")
 
-# 푸터
 st.markdown(
     '<div class="footer">Produced by Hong-Ik Heritage Finder • Premium Edition v2.0</div>',
     unsafe_allow_html=True,
