@@ -254,7 +254,7 @@ def run_analysis():
         batch = tickers[i:i + batch_size]
         try:
             data = yf.download(
-                batch, period="60d", group_by="ticker",
+                batch, period="30d", group_by="ticker",
                 progress=False, threads=True
             )
             if data.empty:
