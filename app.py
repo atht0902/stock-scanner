@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
 import requests
-import time
 
-# 1. 프리미엄 테마 및 CSS (철학 문구 포함)
+# 1. 디자인 및 테마 설정
 st.set_page_config(page_title="홍익 미래 유산 검색기", layout="wide")
 
 st.markdown("""
@@ -37,56 +36,56 @@ with col_f1:
 with col_f2:
     status_filter = st.selectbox("📈 등락 필터", ["전체 보기", "상승 종목만", "급등주 (5%↑)"])
 
-# 3. 초강력 실시간 데이터 엔진 (장중 전용)
-@st.cache_data(ttl=10) # 10초마다 갱신하여 실시간성 확보
-def get_stock_data(filter_type):
-    header = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    url = "https://finance.naver.com/sise/sise_market_sum.naver?sosok=0" if "우량주" in filter_type else "https://finance.naver.com/sise/sise_quant.naver?sosok=0"
+# 3. 데이터 엔진 (복수 경로 스캔 방식)
+@st.cache_data(ttl=30) # 30초마다 갱신
+def fetch_stock_data(target):
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/110.0.0.0 Safari/537.36'}
+    # 거래급등은 거래량 순, 우량주는 시총 순 URL 사용
+    url = "https://finance.naver.com/sise/sise_quant.naver" if "거래" in target else "https://finance.naver.com/sise/sise_market_sum.naver"
     
     try:
-        response = requests.get(url, headers=header, timeout=5)
-        # 테이블을 더 정밀하게 파싱 (여러 테이블 중 실 데이터 테이블 자동 선택)
+        response = requests.get(url, headers=headers, timeout=5)
+        # 모든 테이블을 훑어서 종목명이 있는 테이블 강제 추출
         dfs = pd.read_html(response.text, encoding='cp949')
         for df in dfs:
-            if '종목명' in df.columns and len(df) > 10:
-                df = df.dropna(subset=['종목명', '현재가'])
-                return df.head(40)
+            if '종목명' in df.columns and len(df) > 5:
+                return df.dropna(subset=['종목명', '현재가'])
         return None
     except:
         return None
 
-data = get_stock_data(category)
+# 데이터 호출
+data = fetch_stock_data(category)
 
-# 4. 화면 출력 로직
+# 4. 화면 출력 (그리드)
 if data is not None and not data.empty:
-    # 수치형 변환 작업 (에러 방지 강화)
-    data['현재가_clean'] = pd.to_numeric(data['현재가'], errors='coerce')
-    data['등락률_val'] = data['등락률'].astype(str).str.replace('%','').replace('+','').str.strip()
-    data['등락률_num'] = pd.to_numeric(data['등락률_val'], errors='coerce')
+    # 데이터 정리 (특수문자 제거 및 숫자화)
+    data['현재가_num'] = pd.to_numeric(data['현재가'], errors='coerce')
+    data['등락률_num'] = data['등락률'].astype(str).str.replace('%','').replace('+','').str.strip().apply(pd.to_numeric, errors='coerce')
     
-    # 등락 필터 적용
+    # 필터 적용
+    temp_df = data.copy()
     if status_filter == "급등주 (5%↑)":
-        data = data[data['등락률_num'] >= 5.0]
+        temp_df = temp_df[temp_df['등락률_num'] >= 5.0]
     elif status_filter == "상승 종목만":
-        data = data[data['등락률_num'] > 0]
+        temp_df = temp_df[temp_df['등락률_num'] > 0]
 
-    if not data.empty:
-        # 2열 그리드 배치
+    if not temp_df.empty:
         cols = st.columns(2)
-        for i, (_, row) in enumerate(data.head(14).iterrows()):
+        # 상위 12개 유산 출력
+        for i, (_, row) in enumerate(temp_df.head(12).iterrows()):
             with cols[i % 2]:
-                is_hot = row['등락률_num'] >= 10.0
-                icon = "🔥" if is_hot else ("👑" if "우량주" in category else "💎")
-                with st.expander(f"{icon} {row['종목명']} (+{row['등락률_val']}%)"):
-                    st.metric("현재가", f"{int(row['현재가_clean']):,}원")
+                icon = "🔥" if row['등락률_num'] >= 10 else ("👑" if "우량주" in category else "💎")
+                with st.expander(f"{icon} {row['종목명']} ({row['등락률_num']}%)"):
+                    st.metric("현재가", f"{int(row['현재가_num']):,}원")
                     b1, b2 = st.columns(2)
                     link = f"https://finance.naver.com/search/search.naver?query={row['종목명']}"
                     b1.link_button("📊 분석", link, use_container_width=True)
                     b2.link_button("🔗 공유", f"https://social-plugins.line.me/lineit/share?url={link}", use_container_width=True)
     else:
-        st.warning("현재 필터 조건에 맞는 종목이 없습니다.")
+        st.warning("선택한 필터 조건에 맞는 종목이 없습니다.")
 else:
-    # 정비 중 박스 (데이터 로드 실패 시 보조 로직)
+    # ❌ 데이터 실패 시에만 정비 중 출력
     st.markdown("""
         <div class="maintenance-box">
             <h2 style='color: #FDB931; margin: 0; font-size: 24px;'>⌛ 유산 스캐너 엔진 예열 중</h2>
