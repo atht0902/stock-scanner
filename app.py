@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import requests
-from datetime import datetime
+import time
 
-# 1. 페이지 및 프리미엄 테마 설정
+# 1. 프리미엄 테마 및 CSS (철학 문구 포함)
 st.set_page_config(page_title="홍익 미래 유산 검색기", layout="wide")
 
 st.markdown("""
@@ -15,9 +15,7 @@ st.markdown("""
         background: linear-gradient(to right, #FFD700, #FDB931);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        font-weight: 900;
-        text-align: center;
-        padding-top: 20px;
+        font-weight: 900; text-align: center; padding-top: 20px;
     }
     .sub-title { color: #808495; text-align: center; font-size: 14px; margin-bottom: 25px; }
     .maintenance-box {
@@ -39,41 +37,32 @@ with col_f1:
 with col_f2:
     status_filter = st.selectbox("📈 등락 필터", ["전체 보기", "상승 종목만", "급등주 (5%↑)"])
 
-# 3. 강화된 데이터 엔진 (데이터 누락 방지 로직)
-@st.cache_data(ttl=60) # 장중이므로 캐시 시간을 1분으로 단축
-def get_live_data(filter_type):
+# 3. 초강력 실시간 데이터 엔진 (장중 전용)
+@st.cache_data(ttl=10) # 10초마다 갱신하여 실시간성 확보
+def get_stock_data(filter_type):
+    header = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    url = "https://finance.naver.com/sise/sise_market_sum.naver?sosok=0" if "우량주" in filter_type else "https://finance.naver.com/sise/sise_quant.naver?sosok=0"
+    
     try:
-        header = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        
-        # 분류에 따른 URL 설정
-        if "우량주" in filter_type:
-            url = "https://finance.naver.com/sise/sise_market_sum.naver?sosok=0"
-        else:
-            url = "https://finance.naver.com/sise/sise_quant.naver?sosok=0"
-            
-        res = requests.get(url, headers=header, timeout=10)
-        df_list = pd.read_html(res.text, encoding='cp949')
-        
-        # 유효한 테이블 찾기
-        for df in df_list:
-            if '종목명' in df.columns and len(df) > 5:
-                # 불필요한 행 제거 및 정리
+        response = requests.get(url, headers=header, timeout=5)
+        # 테이블을 더 정밀하게 파싱 (여러 테이블 중 실 데이터 테이블 자동 선택)
+        dfs = pd.read_html(response.text, encoding='cp949')
+        for df in dfs:
+            if '종목명' in df.columns and len(df) > 10:
                 df = df.dropna(subset=['종목명', '현재가'])
-                return df.head(30)
+                return df.head(40)
         return None
-    except Exception as e:
+    except:
         return None
 
-# 데이터 호출
-with st.spinner('미래 유산을 실시간으로 스캔 중...'):
-    data = get_live_data(category)
+data = get_stock_data(category)
 
-# 4. 화면 렌더링
+# 4. 화면 출력 로직
 if data is not None and not data.empty:
-    # 데이터 타입 강제 변환 (에러 방지)
-    data['현재가'] = pd.to_numeric(data['현재가'], errors='coerce')
-    data['등락률'] = data['등락률'].astype(str).str.replace('%','').replace('+','').str.strip()
-    data['등락률_num'] = pd.to_numeric(data['등락률'], errors='coerce')
+    # 수치형 변환 작업 (에러 방지 강화)
+    data['현재가_clean'] = pd.to_numeric(data['현재가'], errors='coerce')
+    data['등락률_val'] = data['등락률'].astype(str).str.replace('%','').replace('+','').str.strip()
+    data['등락률_num'] = pd.to_numeric(data['등락률_val'], errors='coerce')
     
     # 등락 필터 적용
     if status_filter == "급등주 (5%↑)":
@@ -82,27 +71,28 @@ if data is not None and not data.empty:
         data = data[data['등락률_num'] > 0]
 
     if not data.empty:
+        # 2열 그리드 배치
         cols = st.columns(2)
-        for i, (_, row) in enumerate(data.head(12).iterrows()):
+        for i, (_, row) in enumerate(data.head(14).iterrows()):
             with cols[i % 2]:
                 is_hot = row['등락률_num'] >= 10.0
                 icon = "🔥" if is_hot else ("👑" if "우량주" in category else "💎")
-                with st.expander(f"{icon} {row['종목명']} ({row['등락률']}%)"):
-                    st.metric("현재가", f"{int(row['현재가']):,}원")
+                with st.expander(f"{icon} {row['종목명']} (+{row['등락률_val']}%)"):
+                    st.metric("현재가", f"{int(row['현재가_clean']):,}원")
                     b1, b2 = st.columns(2)
-                    search_url = f"https://finance.naver.com/search/search.naver?query={row['종목명']}"
-                    b1.link_button("📊 분석", search_url, use_container_width=True)
-                    b2.link_button("🔗 공유", f"https://social-plugins.line.me/lineit/share?url={search_url}", use_container_width=True)
+                    link = f"https://finance.naver.com/search/search.naver?query={row['종목명']}"
+                    b1.link_button("📊 분석", link, use_container_width=True)
+                    b2.link_button("🔗 공유", f"https://social-plugins.line.me/lineit/share?url={link}", use_container_width=True)
     else:
-        st.warning("현재 조건에 맞는 종목이 없습니다. 필터를 변경해 보세요!")
+        st.warning("현재 필터 조건에 맞는 종목이 없습니다.")
 else:
-    # 정비 중 카드 (데이터 수집 실패 시)
+    # 정비 중 박스 (데이터 로드 실패 시 보조 로직)
     st.markdown("""
         <div class="maintenance-box">
-            <h2 style='color: #FDB931; margin: 0; font-size: 24px;'>⌛ 유산 스캐너 정비 중</h2>
+            <h2 style='color: #FDB931; margin: 0; font-size: 24px;'>⌛ 유산 스캐너 엔진 예열 중</h2>
             <p style='color: #808495; margin-top: 15px; font-size: 15px;'>
-                데이터를 불러오는 중입니다. 잠시 후 새로고침(F5) 해주세요.<br>
-                장 시작 직후에는 데이터 동기화에 시간이 걸릴 수 있습니다.
+                실시간 거래 데이터를 동기화하고 있습니다.<br>
+                잠시만 기다려주시거나 <b>새로고침(F5)</b>을 눌러주세요.
             </p>
         </div>
     """, unsafe_allow_html=True)
