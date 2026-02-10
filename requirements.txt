@@ -1,6 +1,8 @@
+FinanceDataReader
 streamlit
 pykrx
 pandas
 plotly
 pycoingecko
+
 
