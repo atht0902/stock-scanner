@@ -1,6 +1,3 @@
 streamlit
-pandas
 FinanceDataReader
-pykrx
-plotly
-pycoingecko
+pandas
